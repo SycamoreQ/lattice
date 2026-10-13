@@ -1,0 +1,6 @@
+# /Users/kaushikmuthukumar/.opam/5.1.1/bin/dune pkg enabled --root /Users/kaushikmuthukumar/Documents/projects/parallax
+# OCAMLPARAM: unset
+# Shared cache: enabled-except-user-rules
+# Shared cache location: /Users/kaushikmuthukumar/.cache/dune/db
+# Workspace root: /Users/kaushikmuthukumar/Documents/projects/parallax
+# Auto-detected concurrency: 10
