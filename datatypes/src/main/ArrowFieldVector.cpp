@@ -1,70 +1,98 @@
-#include <arrow/memory_pool.h>
-#include <arrow/buffer.h>
-#include "ArrowTypes.hpp"
 #include <arrow/api.h>
-#include "Schema.hpp"
-#include <vector>
 #include <memory>
+#include <stdexcept>
+#include <any>
+#include "ArrowTypes.hpp"
+
+class IllegalStateException : public std::logic_error {
+public:
+    explicit IllegalStateException(const std::string& message)
+        : std::logic_error(message) {}
+};
 
 class ArrowAllocator {
 public:
-    arrow::MemoryPool rootBuffer = arrow::default_memory_pool();
+    static arrow::MemoryPool* getRootPool() {
+        return arrow::default_memory_pool();
+    }
 };
 
-class IllegalStateException: public std::logic_error{
-    public:
-        explicit IllegalStateException(const std::string& message)
-            : std::logic_error(message) {}
-
+class ColumnVector {
+public:
+    virtual ~ColumnVector() = default;
+    virtual std::shared_ptr<arrow::DataType> getType() const = 0;
+    virtual std::any getValue(int i) const = 0;
+    virtual int size() const = 0;
 };
 
 class FieldVectorFactory {
 public:
-    std::vector<Field> create(const std::shared_ptr<arrow::DataType>& arrowType, int initialCapacity){
-        std::vector<arrow::Array> fieldVector;
+    static std::unique_ptr<arrow::ArrayBuilder> create(
+        const std::shared_ptr<arrow::DataType>& arrowType, int initialCapacity) {
 
-        if (arrowType -> id() == arrow::Type::BOOLEAN) {
-            arrow::BooleanBuilder bit_vector_builder(rootBuilder);
+        std::unique_ptr<arrow::ArrayBuilder> builder;
+        arrow::Status status = arrow::MakeBuilder(
+            ArrowAllocator::getRootPool(), arrowType, &builder);
+
+        if (!status.ok()) {
+            throw IllegalStateException("Unsupported type: " + arrowType->ToString());
         }
 
-        if (arrowType -> id() == arrow::Type::INT8){
-            arrow::Int8Builder tiny_int_vector_builder(rootBuilder);
+        if (initialCapacity > 0) {
+            // Ignore status for brevity, but best practice is to check it
+            (void)builder->Reserve(initialCapacity);
         }
 
-        if (arrowType -> id() == arrow::Type::INT16){
-            arrow::Int16Builder small_int_vector_builder(rootBuilder);
+        return builder;
+    }
+};
+
+class ArrowFieldVector : public ColumnVector {
+private:
+    std::shared_ptr<arrow::Array> field;
+
+public:
+    explicit ArrowFieldVector(std::shared_ptr<arrow::Array> array)
+        : field(std::move(array)) {}
+
+    std::shared_ptr<arrow::DataType> getType() const override {
+        return field->type();
+    }
+
+    int size() const override {
+        return field->length();
+    }
+
+    std::any getValue(int i) const override {
+        if (field->IsNull(i)) {
+            return {};
         }
 
-        if (arrowType -> id == arrow::Type::INT32){
-            arrow::Int32Builder int_vector_builder(rootBuilder);
-        }
-
-        if (arrowType -> id == arrow::Type::INT64){
-            arrow::Int64Builder big_int_vector_builder(rootBuilder);
-        }
-
-        if (arrowType -> id == arrow::Type::FLOAT){
-            arrow::Float4Builder float_vector_builder(rootBuilder);
-        }
-
-        if (arrowType -> id == arrow::Type::DOUBLE){
-            arrow::Float8Builder double_vector_builder(rootBuilder);
-        }
-
-        if (arrowType -> id == arrow::Type::STRING){
-            arrow::StringBuilder string_vector_builder(rootBuilder);
-        }
-
-        if (arrowType -> id == arrow::Type::DATE32){
-            arrow::Date32Builder date32_vector_builder(rootBuilder);
-        }
-
-        if (arrowType -> id == arrow::Type::INTERVAL_DAY_TIME){
-            arrow::MonthDayNanoIntervalBuilder interval_nano_vector_builder(rootBuilder);
-        }
-
-        else {
-            throw IllegalStateException("Type does not exist: Cannot build memory pool");
+        switch (field->type_id()) {
+            case arrow::Type::BOOLEAN:
+                return std::static_pointer_cast<arrow::BooleanArray>(field)->Value(i);
+            case arrow::Type::INT8:
+                return std::static_pointer_cast<arrow::Int8Array>(field)->Value(i);
+            case arrow::Type::INT16:
+                return std::static_pointer_cast<arrow::Int16Array>(field)->Value(i);
+            case arrow::Type::INT32:
+                return std::static_pointer_cast<arrow::Int32Array>(field)->Value(i);
+            case arrow::Type::INT64:
+                return std::static_pointer_cast<arrow::Int64Array>(field)->Value(i);
+            case arrow::Type::FLOAT:
+                return std::static_pointer_cast<arrow::FloatArray>(field)->Value(i);
+            case arrow::Type::DOUBLE:
+                return std::static_pointer_cast<arrow::DoubleArray>(field)->Value(i);
+            case arrow::Type::STRING:
+                return std::static_pointer_cast<arrow::StringArray>(field)->GetString(i);
+            case arrow::Type::DATE32:
+                return std::static_pointer_cast<arrow::Date32Array>(field)->Value(i);
+            default:
+                throw IllegalStateException("Unsupported vector type: " + field->type()->ToString());
         }
     }
-}
+
+    void close() {
+        field.reset();
+    }
+};
