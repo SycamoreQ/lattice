@@ -16,7 +16,6 @@ public:
         : name(std::move(n)), dataType(std::move(type)) {}
 
     std::shared_ptr<arrow::Field> toArrow() const {
-        // arrow::field(name, type, nullable)
         return arrow::field(name, dataType, true);
     }
 };

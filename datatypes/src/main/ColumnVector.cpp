@@ -8,4 +8,5 @@ public:
     virtual ArrowTypes getType();
     virtual std::any getValue(int i);
     virtual int size();
+    virtual void close() = 0;
 };
