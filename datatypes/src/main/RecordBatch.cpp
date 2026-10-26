@@ -8,8 +8,6 @@
 #include <sstream>
 
 #include "Schema.hpp"
-// Ensure you include the header (.hpp), not the .cpp file!
-// Make sure ColumnVector has a virtual void close() = 0; method defined in it.
 #include "ColumnVector.hpp"
 
 class RecordBatch {
